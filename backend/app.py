@@ -12,48 +12,32 @@ import secrets
 import base64
 
 app = Flask(__name__)
-
-# Get the absolute path to the current directory
 basedir = os.path.abspath(os.path.dirname(__file__))
-
-# Create database directory if it doesn't exist
 db_dir = os.path.join(basedir, 'database')
 os.makedirs(db_dir, exist_ok=True)
-
-# Use absolute path for database
 db_path = os.path.join(db_dir, 'users.db')
-# Database Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Security Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'spotify-oauth-secret-key-change-in-production-' + secrets.token_hex(16))
-
-# Session Configuration for OAuth
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
 app.config['SESSION_KEY_PREFIX'] = 'spotify_oauth:'
 app.config['SESSION_COOKIE_NAME'] = 'spotify_session'
-app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
+app.config['SESSION_COOKIE_DOMAIN'] = None
 app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# Spotify Configuration
-SPOTIFY_CLIENT_ID = '0e72c394c0bd4e80b930b8a9fd3bf876'  # Replace with your Spotify Client ID
-SPOTIFY_CLIENT_SECRET = '4dcaf27a1e9249d1ad9ea6e2514b0ec8'  # Replace with your Spotify Client Secret
 SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:5000/api/spotify/callback'
 SPOTIFY_SCOPE = 'user-read-private user-read-email playlist-read-private playlist-read-collaborative user-top-read user-read-recently-played'
 
 print(f"📁 Database will be created at: {db_path}")
 
 db = SQLAlchemy(app)
-CORS(app, supports_credentials=True)  # Enable CORS for React Native with credentials
+CORS(app, supports_credentials=True)
 
-
-# Add this after your User class
 class SpotifyOAuthState(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -63,7 +47,7 @@ class SpotifyOAuthState(db.Model):
     used = db.Column(db.Boolean, default=False)
 
     def is_expired(self):
-    # Make expires_at timezone-aware if it isn't already
+
         if self.expires_at.tzinfo is None:
             expires_at_utc = self.expires_at.replace(tzinfo=timezone.utc)
         else:
@@ -73,18 +57,14 @@ class SpotifyOAuthState(db.Model):
 
     def is_valid(self):
         return not self.used and not self.is_expired()
-
-# Updated User model with Spotify fields
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(120), nullable=False)
-    genres = db.Column(db.Text, nullable=True)  # Store as JSON string
-    profile_picture = db.Column(db.String(500), nullable=True)  # Store image URL or path
+    genres = db.Column(db.Text, nullable=True)
+    profile_picture = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    
-    # Spotify fields
     spotify_id = db.Column(db.String(120), nullable=True, unique=True)
     spotify_access_token = db.Column(db.Text, nullable=True)
     spotify_refresh_token = db.Column(db.Text, nullable=True)
@@ -117,8 +97,6 @@ class User(db.Model):
         """Check if Spotify token is still valid"""
         if not self.spotify_token_expires_at:
             return False
-        
-        # Make spotify_token_expires_at timezone-aware if it isn't already
         if self.spotify_token_expires_at.tzinfo is None:
             expires_at_utc = self.spotify_token_expires_at.replace(tzinfo=timezone.utc)
         else:
@@ -131,7 +109,6 @@ def validate_email(email):
     return re.match(pattern, email) is not None
 
 def validate_password(password):
-    # At least 6 characters
     return len(password) >= 6
 
 def validate_genres(genres):
@@ -142,8 +119,6 @@ def validate_genres(genres):
         return False
     if len(genres) > 5:
         return False
-    
-    # Valid genre IDs (should match your frontend)
     valid_genres = [
         'rock', 'pop', 'hip-hop', 'jazz', 'classical', 'electronic',
         'country', 'r&b', 'reggae', 'metal', 'folk', 'blues'
@@ -208,8 +183,6 @@ def get_spotify_user_data(access_token):
         else:
             print(f"❌ Spotify API Error - Status: {response.status_code}")
             print(f"❌ Response Text: {response.text}")
-            
-            # Handle specific error cases
             if response.status_code == 401:
                 print("❌ Token appears to be invalid or expired")
             elif response.status_code == 403:
@@ -250,8 +223,6 @@ def get_spotify_playlists():
         
         if not user.spotify_connected:
             return jsonify({'error': 'Spotify not connected'}), 400
-        
-        # Check if token needs refresh
         if not user.is_spotify_token_valid():
             if not refresh_spotify_token(user):
                 return jsonify({'error': 'Failed to refresh Spotify token'}), 401
@@ -298,8 +269,6 @@ def get_spotify_top_tracks():
         
         if not user.spotify_connected:
             return jsonify({'error': 'Spotify not connected'}), 400
-        
-        # Check if token needs refresh
         if not user.is_spotify_token_valid():
             if not refresh_spotify_token(user):
                 return jsonify({'error': 'Failed to refresh Spotify token'}), 401
@@ -345,8 +314,6 @@ def get_spotify_recently_played():
         
         if not user.spotify_connected:
             return jsonify({'error': 'Spotify not connected'}), 400
-        
-        # Check if token needs refresh
         if not user.is_spotify_token_valid():
             if not refresh_spotify_token(user):
                 return jsonify({'error': 'Failed to refresh Spotify token'}), 401
@@ -393,8 +360,6 @@ def get_spotify_top_artists():
         
         if not user.spotify_connected:
             return jsonify({'error': 'Spotify not connected'}), 400
-        
-        # Check if token needs refresh
         if not user.is_spotify_token_valid():
             if not refresh_spotify_token(user):
                 return jsonify({'error': 'Failed to refresh Spotify token'}), 401
@@ -422,8 +387,6 @@ def get_spotify_top_artists():
     except Exception as e:
         print(f"❌ Error getting Spotify top artists: {e}")
         return jsonify({'error': 'Internal server error'}), 500
-
-# Existing endpoints (signup, login, etc.) remain the same...
 @app.route('/api/signup', methods=['POST'])
 def signup():
     try:
@@ -447,8 +410,6 @@ def signup():
         print(f"   Password: '{password}' (length: {len(password)})")
         print(f"   Genres: {genres} (count: {len(genres) if genres else 0})")
         print(f"   Profile Picture: {profile_picture[:50] + '...' if profile_picture and len(profile_picture) > 50 else profile_picture}")
-        
-        # Basic validation
         if not username or len(username) < 3:
             print(f"❌ Username validation failed: '{username}' (length: {len(username)})")
             return jsonify({'error': 'Username must be at least 3 characters'}), 400
@@ -460,15 +421,11 @@ def signup():
         if not validate_password(password):
             print(f"❌ Password validation failed: length {len(password)} (need 6+)")
             return jsonify({'error': 'Password must be at least 6 characters'}), 400
-        
-        # Validate genres if provided
         if genres and not validate_genres(genres):
             print(f"❌ Genres validation failed: {genres}")
             return jsonify({'error': 'Invalid genres selection (1-5 valid genres required)'}), 400
         
         print("✅ All signup validations passed!")
-        
-        # Check if user already exists
         existing_user = User.query.filter_by(username=username).first()
         if existing_user:
             print(f"❌ Username already exists: {username}")
@@ -478,8 +435,6 @@ def signup():
         if existing_email:
             print(f"❌ Email already exists: {email}")
             return jsonify({'error': 'Email already registered'}), 400
-        
-        # Create new user
         password_hash = generate_password_hash(password)
         new_user = User(
             username=username,
@@ -487,8 +442,6 @@ def signup():
             password_hash=password_hash,
             profile_picture=profile_picture
         )
-        
-        # Set genres using the helper method
         if genres:
             new_user.set_genres(genres)
         
@@ -526,9 +479,7 @@ def login():
         if not data:
             print("❌ No login data provided")
             return jsonify({'error': 'No data provided'}), 400
-        
-        # Can login with either username or email
-        login_field = data.get('username', '').strip()  # This could be username or email
+        login_field = data.get('username', '').strip()
         password = data.get('password', '')
         
         print(f"📝 Login attempt:")
@@ -542,23 +493,17 @@ def login():
         if not password:
             print("❌ No password provided")
             return jsonify({'error': 'Password is required'}), 400
-        
-        # Find user by username or email
         user = None
         if validate_email(login_field):
-            # It's an email
             user = User.query.filter_by(email=login_field.lower()).first()
             print(f"🔍 Looking for user by email: {login_field.lower()}")
         else:
-            # It's a username
             user = User.query.filter_by(username=login_field).first()
             print(f"🔍 Looking for user by username: {login_field}")
         
         if not user:
             print(f"❌ User not found: {login_field}")
             return jsonify({'error': 'Invalid username/email or password'}), 401
-        
-        # Check password
         if not check_password_hash(user.password_hash, password):
             print(f"❌ Invalid password for user: {user.username}")
             return jsonify({'error': 'Invalid username/email or password'}), 401
@@ -583,8 +528,6 @@ def login():
     except Exception as e:
         print(f"❌ Error during login: {e}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
-
-# New Spotify Authorization Endpoints
 @app.route('/api/spotify/auth-url', methods=['POST'])
 def get_spotify_auth_url():
     """Generate Spotify authorization URL"""
@@ -598,14 +541,8 @@ def get_spotify_auth_url():
         user = db.session.get(User, user_id)  # Fixed SQLAlchemy syntax
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
-        # Clean up any existing unused states for this user
         SpotifyOAuthState.query.filter_by(user_id=user_id, used=False).delete()
-        
-        # Generate a random state parameter for security
         state_token = secrets.token_urlsafe(32)
-        
-        # Store state in database with 10-minute expiration
         oauth_state = SpotifyOAuthState(
             user_id=user_id,
             state_token=state_token,
@@ -615,14 +552,12 @@ def get_spotify_auth_url():
         db.session.commit()
         
         print(f"🔍 Generated and stored state for user {user_id}: {state_token}")
-        
-        # Build authorization URL
         params = {
             'response_type': 'code',
             'client_id': SPOTIFY_CLIENT_ID,
             'scope': SPOTIFY_SCOPE,
             'redirect_uri': SPOTIFY_REDIRECT_URI,
-            'state': f"{user_id}:{state_token}"  # Include user_id in state
+            'state': f"{user_id}:{state_token}"
         }
         
         auth_url = 'https://accounts.spotify.com/authorize?' + urllib.parse.urlencode(params)
@@ -656,8 +591,6 @@ def spotify_callback():
         if not code or not state:
             print("❌ Missing code or state parameter")
             return redirect('http://localhost:3000/spotify-error')
-        
-        # Extract user_id from state
         try:
             user_id_str, state_token = state.split(':', 1)
             user_id = int(user_id_str)
@@ -670,8 +603,6 @@ def spotify_callback():
         if not user:
             print(f"❌ User not found: {user_id}")
             return redirect('http://localhost:3000/spotify-error')
-        
-        # Verify state parameter
         oauth_state = SpotifyOAuthState.query.filter_by(
             user_id=user_id, 
             state_token=state_token, 
@@ -681,14 +612,10 @@ def spotify_callback():
         if not oauth_state or not oauth_state.is_valid():
             print(f"❌ State validation failed. Invalid or expired state: {state_token}")
             return redirect('http://localhost:3000/spotify-error')
-
-        # Mark state as used
         oauth_state.used = True
         db.session.commit()
                 
         print("✅ State validation passed")
-        
-        # Exchange code for access token
         auth_header = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
         
         headers = {
@@ -735,14 +662,11 @@ def spotify_callback():
         except requests.exceptions.RequestException as e:
             print(f"❌ Request error during token exchange: {e}")
             return redirect('http://localhost:3000/spotify-error')
-        
-        # Get user data from Spotify with enhanced error handling
         print("🔄 Getting Spotify user data...")
         spotify_user_data = get_spotify_user_data(access_token)
         
         if not spotify_user_data:
             print("❌ Failed to get Spotify user data")
-            # Still try to save the tokens even if user data fails
             user.spotify_access_token = access_token
             user.spotify_refresh_token = refresh_token
             user.spotify_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
@@ -756,8 +680,6 @@ def spotify_callback():
         print(f"   Display Name: {spotify_user_data.get('display_name')}")
         print(f"   Email: {spotify_user_data.get('email')}")
         print(f"   Images: {len(spotify_user_data.get('images', []))} image(s)")
-        
-        # Update user with Spotify data
         user.spotify_id = spotify_user_data['id']
         user.spotify_access_token = access_token
         user.spotify_refresh_token = refresh_token
@@ -765,8 +687,6 @@ def spotify_callback():
         user.spotify_connected = True
         user.spotify_display_name = spotify_user_data.get('display_name')
         user.spotify_email = spotify_user_data.get('email')
-        
-        # Get profile image if available
         if spotify_user_data.get('images') and len(spotify_user_data['images']) > 0:
             user.spotify_profile_image = spotify_user_data['images'][0]['url']
             print(f"✅ Profile image saved: {user.spotify_profile_image}")
@@ -774,8 +694,6 @@ def spotify_callback():
         db.session.commit()
         
         print(f"✅ Spotify connected successfully for user: {user.username}")
-        
-        # Redirect back to your app with success
         return redirect('http://localhost:3000/spotify-success')
         
     except Exception as e:
@@ -797,8 +715,6 @@ def disconnect_spotify():
         user = db.session.get(User, user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
-        # Clear Spotify data
         user.spotify_id = None
         user.spotify_access_token = None
         user.spotify_refresh_token = None
@@ -832,13 +748,9 @@ def get_spotify_user_data_endpoint():
         
         if not user.spotify_connected:
             return jsonify({'error': 'Spotify not connected'}), 400
-        
-        # Check if token needs refresh
         if not user.is_spotify_token_valid():
             if not refresh_spotify_token(user):
                 return jsonify({'error': 'Failed to refresh Spotify token'}), 401
-        
-        # Get fresh user data from Spotify
         spotify_data = get_spotify_user_data(user.spotify_access_token)
         if not spotify_data:
             return jsonify({'error': 'Failed to get Spotify data'}), 500
@@ -856,8 +768,6 @@ def get_spotify_user_data_endpoint():
     except Exception as e:
         print(f"❌ Error getting Spotify user data: {e}")
         return jsonify({'error': 'Internal server error'}), 500
-
-# Existing endpoints remain the same...
 @app.route('/api/users', methods=['GET'])
 def get_users():
     try:
@@ -890,16 +800,12 @@ def update_user_profile(user_id):
         user = db.session.get(User, user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
-        # Update genres if provided
         if 'genres' in data:
             genres = data['genres']
             if validate_genres(genres):
                 user.set_genres(genres)
             else:
                 return jsonify({'error': 'Invalid genres'}), 400
-        
-        # Update profile picture if provided
         if 'profilePicture' in data:
             user.profile_picture = data['profilePicture']
         
